@@ -1,0 +1,39 @@
+---
+title: "Processing ILT Control Files"
+format: html
+---
+
+```{r}
+library(flowWorkspace)
+library(Luciernaga)
+library(Coereba)
+library(flowGate)
+library(dplyr)
+```
+
+```{r}
+Folder <- "Ctrl_Antibody"
+StorageLocation <- file.path("data", Folder)
+
+OutputLocation <- file.path("outputs", Folder)
+if (!dir.exists(OutputLocation)){dir.create(OutputLocation)}
+```
+
+```{r}
+fcs_files <- list.files(StorageLocation,
+ pattern=".fcs", full.names=TRUE)
+
+MyCytoSet <- load_cytoset_from_fcs(fcs_files[1:3],
+ truncate_max_range=FALSE, transformation=FALSE)
+
+MyGatingSet <- GatingSet(MyCytoSet)
+```
+
+```{r}
+pData(MyGatingSet)
+```
+
+```{r}
+markernames(MyGatingSet[1])
+```
+
