@@ -3,13 +3,22 @@ title: "Processing ILT Control Files"
 format: html
 ---
 
+# Getting Started
+
+## Set Up
+
+Attach the required R packages to your local environment via the `library()` call
 ```{r}
 library(flowWorkspace)
 library(Luciernaga)
 library(Coereba)
 library(flowGate)
 library(dplyr)
+library(stringr)
+library(purrr)
 ```
+
+Designate file paths to the folder with your .fcs files, and a desired storage location for any intermediate outputs. 
 
 ```{r}
 Folder <- "Ctrl_Antibody"
@@ -19,21 +28,138 @@ OutputLocation <- file.path("outputs", Folder)
 if (!dir.exists(OutputLocation)){dir.create(OutputLocation)}
 ```
 
+Proceed to load the .fcs files into a GatingSet object. 
+
 ```{r}
 fcs_files <- list.files(StorageLocation,
  pattern=".fcs", full.names=TRUE)
 
-MyCytoSet <- load_cytoset_from_fcs(fcs_files[1:3],
+UnmixedCytoSet <- load_cytoset_from_fcs(fcs_files[1:3],
  truncate_max_range=FALSE, transformation=FALSE)
 
-MyGatingSet <- GatingSet(MyCytoSet)
+UnmixedGatingSet <- GatingSet(UnmixedCytoSet)
+```
+
+## Metadata
+
+Check the current metadata status.
+
+```{r}
+pData(UnmixedGatingSet)
 ```
 
 ```{r}
-pData(MyGatingSet)
+Bid <- function(filename) {
+  bid <- str_extract(filename, "INF\\d{3}")
+  bid <- data.frame(bid, check.names=FALSE)
+}
+
+Condition <- function(filename) {
+  Condition <-str_extract(filename, "(?<=INF\\d{3}-)[A-Za-z]+(?=_Antibody)")
+  Condition  <- data.frame(Condition, check.names=FALSE)
+}
+
+Experiment <- function(filename) {
+  Experiment <- str_extract(filename, "ILT_\\d{2}")
+  Experiment <- data.frame(Experiment, check.names=FALSE)
+}
 ```
 
 ```{r}
-markernames(MyGatingSet[1])
+pd <- pData(UnmixedGatingSet)
+
+Names <- pd |> pull(name)
+
+TheNames <- pd
+TheBID <- map(.x=Names, .f=Bid) |> bind_rows()
+TheCondition <- map(.x=Names, .f=Condition) |> bind_rows()
+TheExperiment <- map(.x=Names, .f=Experiment) |> bind_rows()
+
+TheIntermediate <- bind_cols(TheNames, TheBID, TheCondition, TheExperiment)
 ```
 
+```{r}
+TheMetadata <- file.path("data", "Metadata.csv")
+TheMetadataDF <- read.csv(TheMetadata, check.names=FALSE)
+AddThisMetada <- TheMetadataDF |> select(bid, ptype, infant_sex)
+UpdatedMetadata <- left_join(TheIntermediate, AddThisMetada, by="bid")
+
+pData(UnmixedGatingSet) <- UpdatedMetadata
+```
+
+```{r}
+pData(UnmixedGatingSet) |> View()
+```
+
+## Transformation
+
+Proceed to transform and visualize your data to ensure that everything looks okay before proceeding.
+
+```{r}
+#| label: "Biexponential Transformation"
+#| message: false
+Markers <- colnames(UnmixedCytoSet)
+KeptMarkers <- Markers[-grep("Time|FS|SC|SS|Original|-W$|-H$|AF", Markers)]
+
+Biexponential <- flowjo_biexp_trans(channelRange=4096, maxValue=4194304,
+     pos=5.62, neg=1, widthBasis=-1000)
+TransformList <- transformerList(KeptMarkers, Biexponential)
+UnmixedGatingSet <- transform(UnmixedGatingSet, TransformList)
+```
+
+```{r}
+markernames(UnmixedGatingSet[1])
+```
+
+```{r}
+ggcyto(UnmixedGatingSet[1], subset="root",
+ aes(x="BUV496-A", y="BUV805-A")) + geom_hex(bins=100)
+
+ggcyto(UnmixedGatingSet[1], subset="root",
+ aes(x="CD7", y="CD3")) + geom_hex(bins=100)
+
+ggcyto(UnmixedGatingSet[1], subset="root",
+ aes(x="CD45RA", y="CD3")) + geom_hex(bins=100)
+```
+
+## Gating
+
+## Creating Clean Up Gates
+
+With our template setup, and our files loaded into a GatingSet, we can add draw cleanup gates to ensure we are only providing our cell type of interest when we draw the positive gates. 
+
+To do this, we will leverage the `flowGate` packages ShinyApp. 
+
+```{r}
+CellGatingTable <- tibble::tribble(
+  ~filterId,    ~dims,                          ~subset,      
+  "scatter",   list("FSC-A", "SSC-A"),          "root", 
+  "singlets",   list("FSC-A", "FSC-H"),         "scatter",
+  "live",   list("FSC-A", "Zombie NIR-A"),      "singlets",
+  "CD7+",   list("Pacific Blue-A", "BV711-A"),  "live",
+  "Tcells",list("BV510-A", "Spark Blue 550-A"),  "CD7+",
+  "NotVd2cells",list("BUV661-A", "Spark Blue 550-A"),  "Tcells",
+  "NotNKTcells",list("FITC-A", "Spark Blue 550-A"),  "NotVd2cells",
+  "NotMAITcells",list("BV480-A", "Alexa Fluor 647-A"),  "NotNKTcells",
+  "CD4Tcells",list("BUV496-A", "BUV805-A"),  "NotMAITcells",
+  "CD8Tcells",list("BUV496-A", "BUV805-A"),  "NotMAITcells",
+  "DNTcells",list("BUV496-A", "BUV805-A"),  "NotMAITcells",
+  "NKLikecells",list("BV510-A", "Spark Blue 550-A"),  "CD7+",
+)
+```
+
+Create an initial gate based on one specimen (if using provided examples, we already downsampled so include everything!) 
+
+```{r}
+#| eval: FALSE
+flowGate::gs_apply_gating_strategy(UnmixedGatingSet, gating_strategy = CellGatingTable)
+```
+
+And check the gates across individual specimens. Don't forget to leave dead cells for the viability unmixing control!
+
+```{r}
+#| eval: FALSE
+
+CheckTheseGates <- CellGatingTable |> pull(filterId)
+walk(.x=CheckTheseGates, .f=gs_apply_gate_check, gs=UnmixedGatingSet)
+```
