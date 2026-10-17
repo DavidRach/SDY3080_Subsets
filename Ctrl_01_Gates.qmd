@@ -34,7 +34,7 @@ Proceed to load the .fcs files into a GatingSet object.
 fcs_files <- list.files(StorageLocation,
  pattern=".fcs", full.names=TRUE)
 
-UnmixedCytoSet <- load_cytoset_from_fcs(fcs_files[1:3],
+UnmixedCytoSet <- load_cytoset_from_fcs(fcs_files,
  truncate_max_range=FALSE, transformation=FALSE)
 
 UnmixedGatingSet <- GatingSet(UnmixedCytoSet)
@@ -83,11 +83,13 @@ TheMetadata <- file.path("data", "Metadata.csv")
 TheMetadataDF <- read.csv(TheMetadata, check.names=FALSE)
 AddThisMetada <- TheMetadataDF |> select(bid, ptype, infant_sex)
 UpdatedMetadata <- left_join(TheIntermediate, AddThisMetada, by="bid")
+rownames(UpdatedMetadata) <- rownames(pd)
 
 pData(UnmixedGatingSet) <- UpdatedMetadata
 ```
 
 ```{r}
+#| eval: FALSE
 pData(UnmixedGatingSet) |> View()
 ```
 
@@ -161,5 +163,73 @@ And check the gates across individual specimens. Don't forget to leave dead cell
 #| eval: FALSE
 
 CheckTheseGates <- CellGatingTable |> pull(filterId)
-walk(.x=CheckTheseGates, .f=gs_apply_gate_check, gs=UnmixedGatingSet)
+
+#walk(.x=CheckTheseGates, .f=gs_apply_gate_check, gs=UnmixedGatingSet)
+
+walk(.x=CheckTheseGates[12], .f=gs_apply_gate_check, gs=UnmixedGatingSet)
+
+# ?gs_apply_gate_check
+```
+
+## Save GatingSet 
+
+```{r}
+StoreHere <- file.path(OutputLocation, "SDY3080_Ctrl.gs")
+save_gs(UnmixedGatingSet, StoreHere)
+```
+
+## Export Nodes
+
+```{r}
+TheseScripts <- list.files("R", pattern=".R", full.names=TRUE)
+walk(.x=TheseScripts, .f=source)
+```
+
+```{r}
+plot(UnmixedGatingSet)
+```
+
+```{r}
+NewLocation <- file.path(OutputLocation, "CD4")
+if (!dir.exists(NewLocation)){dir.create(NewLocation)}
+
+AllCD4s <- purrr::map(.x=UnmixedGatingSet, subset="CD4Tcells",
+ .f=Downsampling, DownsampleCount=10000000, addon="CD4Tcells",
+  returnType="fcs", StorageLocation=NewLocation)
+```
+
+```{r}
+NewLocation <- file.path(OutputLocation, "CD8")
+if (!dir.exists(NewLocation)){dir.create(NewLocation)}
+
+AllCD8s <- purrr::map(.x=UnmixedGatingSet, subset="CD8Tcells",
+ .f=Downsampling, DownsampleCount=10000000, addon="CD8Tcells",
+  returnType="fcs", StorageLocation=NewLocation)
+```
+
+```{r}
+NewLocation <- file.path(OutputLocation, "DN")
+if (!dir.exists(NewLocation)){dir.create(NewLocation)}
+
+AllDNs <- purrr::map(.x=UnmixedGatingSet, subset="DNTcells",
+ .f=Downsampling, DownsampleCount=10000000, addon="DNTcells",
+  returnType="fcs", StorageLocation=NewLocation)
+```
+
+```{r}
+NewLocation <- file.path(OutputLocation, "NK")
+if (!dir.exists(NewLocation)){dir.create(NewLocation)}
+
+AllNKs <- purrr::map(.x=UnmixedGatingSet, subset="NKLikecells",
+ .f=Downsampling, DownsampleCount=10000000, addon="NKcells",
+  returnType="fcs", StorageLocation=NewLocation)
+```
+
+```{r}
+NewLocation <- file.path(OutputLocation, "CD7")
+if (!dir.exists(NewLocation)){dir.create(NewLocation)}
+
+AllNKs <- purrr::map(.x=UnmixedGatingSet[1], subset="CD7+",
+ .f=Downsampling, DownsampleCount=70000, addon="CD7",
+  returnType="fcs", StorageLocation=NewLocation)
 ```
