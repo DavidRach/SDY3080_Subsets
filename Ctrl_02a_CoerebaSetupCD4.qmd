@@ -197,3 +197,41 @@ library(shinydashboard)
 
 Coereba_App()
 ```
+
+```{r}
+TheOldCSV <- file.path(OutputLocation, "SecondGates.csv")
+#TheClickData <- read.csv(TheClickInfo, check.names=FALSE)
+#TheClickData
+```
+
+We can then run `Coereba_UpdateGates()` and examine how the values are correspondingly updated.
+
+```{r}
+ShinyGatesSplitpoints <- Coereba_UpdateGates(Clicks=TheClickInfo, Old=TheOldCSV,
+  export=FALSE, outpath=OutputLocation, fileName="UpdatedCSV")
+
+ShinyGatesSplitpoints
+```
+
+```{r}
+TheName <- paste0(Subset, "Gates.csv")
+
+ShinyGatesPath <- file.path(OutputLocation, TheName)
+write.csv(ShinyGatesSplitpoints, ShinyGatesPath, row.names=FALSE)
+```
+
+```{r}
+#| label: NbyN plot check 2
+#| message: FALSE
+#| warning: FALSE
+
+ShinyGatesPath <- file.path(OutputLocation, TheName)
+ShinyGatesSplitpoints <- read.csv(ShinyGatesPath, check.names=FALSE)
+
+UpdatedCondition <- paste0(Subset, "_After")
+
+Plot <- Utility_NbyNPlots(x=UnmixedGatingSet[1], sample.name=c("GROUPNAME", "TUBENAME"), experiment="SDY3080",
+condition=UpdatedCondition, removestrings=".fcs", marginsubset="root", gatesubset="root", 
+ycolumn="BUV395-A", bins=150, clearance=0.1, 
+gatelines=TRUE, reference=ShinyGatesSplitpoints, outpath=OutputLocation, returntype="pdf")
+```

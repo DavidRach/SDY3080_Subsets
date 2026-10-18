@@ -1,0 +1,314 @@
+---
+title: "Summarized Experiment - CD4"
+format: html
+---
+
+
+```{r}
+library(flowWorkspace)
+library(Luciernaga)
+library(Coereba)
+library(flowGate)
+library(dplyr)
+library(stringr)
+library(purrr)
+```
+
+```{r}
+TheseScripts <- list.files("R", pattern=".R", full.names=TRUE)
+walk(.x=TheseScripts, .f=source)
+```
+
+```{r}
+Folder <- "Ctrl_Antibody"
+Subset <- "CD4"
+
+StorageLocation <- file.path("outputs", Folder, Subset)
+DownsampledFolder <- file.path(StorageLocation, "Downsampled")
+if (!dir.exists(DownsampledFolder)){dir.create(DownsampledFolder)}
+
+CoerebaFolder <- file.path(StorageLocation, "Coereba")
+if (!dir.exists(CoerebaFolder)){dir.create(CoerebaFolder)}
+
+OutputLocation <- CoerebaFolder
+```
+
+```{r}
+fcs_files <- list.files(StorageLocation,
+ pattern=".fcs", full.names=TRUE)
+
+UnmixedCytoSet <- load_cytoset_from_fcs(fcs_files,
+ truncate_max_range=FALSE, transformation=FALSE)
+
+UnmixedGatingSet <- GatingSet(UnmixedCytoSet)
+```
+
+```{r}
+TheName <- paste0(Subset, "Gates.csv")
+FinalSplitpointsPath <- file.path(OutputLocation, TheName)
+FinalSplitpoints <- read.csv(FinalSplitpointsPath, check.names=FALSE)
+```
+
+## Metadata
+
+Check the current metadata status.
+
+```{r}
+pData(UnmixedGatingSet)
+```
+
+```{r}
+Bid <- function(filename) {
+  bid <- str_extract(filename, "INF\\d{3}")
+  bid <- data.frame(bid, check.names=FALSE)
+}
+
+Condition <- function(filename) {
+  Condition <-str_extract(filename, "(?<=INF\\d{3}-)[A-Za-z]+(?=_Antibody)")
+  Condition  <- data.frame(Condition, check.names=FALSE)
+}
+
+Experiment <- function(filename) {
+  Experiment <- str_extract(filename, "ILT_\\d{2}")
+  Experiment <- data.frame(Experiment, check.names=FALSE)
+}
+```
+
+```{r}
+pd <- pData(UnmixedGatingSet)
+
+Names <- pd |> pull(name)
+
+TheNames <- pd
+TheBID <- map(.x=Names, .f=Bid) |> bind_rows()
+TheCondition <- map(.x=Names, .f=Condition) |> bind_rows()
+TheExperiment <- map(.x=Names, .f=Experiment) |> bind_rows()
+
+TheIntermediate <- bind_cols(TheNames, TheBID, TheCondition, TheExperiment)
+```
+
+```{r}
+TheMetadata <- file.path("data", "Metadata.csv")
+TheMetadataDF <- read.csv(TheMetadata, check.names=FALSE)
+AddThisMetada <- TheMetadataDF |> select(bid, ptype, infant_sex)
+UpdatedMetadata <- left_join(TheIntermediate, AddThisMetada, by="bid")
+rownames(UpdatedMetadata) <- rownames(pd)
+
+pData(UnmixedGatingSet) <- UpdatedMetadata
+```
+
+```{r}
+#| eval: FALSE
+pData(UnmixedGatingSet) |> View()
+```
+
+## Transformation
+
+Proceed to transform and visualize your data to ensure that everything looks okay before proceeding.
+
+```{r}
+#| label: "Biexponential Transformation"
+#| message: false
+Markers <- colnames(UnmixedCytoSet)
+KeptMarkers <- Markers[-grep("Time|FS|SC|SS|Original|-W$|-H$|AF", Markers)]
+MarkersForToday <- KeptMarkers
+
+Biexponential <- flowjo_biexp_trans(channelRange=4096, maxValue=4194304,
+     pos=5.62, neg=1, widthBasis=-1000)
+TransformList <- transformerList(KeptMarkers, Biexponential)
+UnmixedGatingSet <- transform(UnmixedGatingSet, TransformList)
+```
+
+```{r}
+markernames(UnmixedGatingSet[1])
+```
+
+```{r}
+ggcyto(UnmixedGatingSet[1], subset="root",
+ aes(x="APC-Fire 750", y="BUV395-A")) + geom_hex(bins=100)
+```
+
+# Coereba
+
+```{r}
+#| label: ListOfFlowFrames
+
+CoerebaFlowFrame <- Utility_Coereba(gs=UnmixedGatingSet, subsets="root",
+ sample.name=c("GROUPNAME", "TUBENAME"), reference=FinalSplitpointsPath, starter="Spark Blue 550-A",
+ inverse.transform = TRUE, returnType="flowframe", Individual=TRUE, outpath=NULL,
+ columns = KeptMarkers)
+```
+
+```{r}
+TestFlowFrame <- unlist(CoerebaFlowFrame)
+TestFlowSet <- flowCore::flowSet(TestFlowFrame)
+TestFlowGS <- GatingSet(TestFlowSet)
+
+TidyedCopy <- UpdatedMetadata
+
+IncompleteMetadata <- pData(TestFlowGS)
+rownames(TidyedCopy) <- rownames(IncompleteMetadata)
+UpdatedTidyedCopy <- TidyedCopy #|> mutate(Batch=paste0(Specimen, "_", ptype))
+pData(TestFlowGS) <- UpdatedTidyedCopy
+
+# pData(TestFlowGS) |> View()
+```
+
+```{r}
+GoodbyeFileName <- paste0("CoerebaConcatenate_", Subset)
+
+Goodbye <- Coereba_Concatenate(Set=TestFlowGS, metadata_cols=c("bid", "ptype", "infant_sex", "Experiment", "Condition"), outpath=OutputLocation, filename=GoodbyeFileName, inverse.transform=FALSE, returnType="data")
+
+#str(Goodbye)
+```
+
+# Creating SummarizedExperiment
+
+```{r}
+#| eval: false
+Metadata <- UpdatedTidyedCopy |>
+     dplyr::select("bid", "ptype", "infant_sex", "Experiment", "Condition") |> unique()
+rownames(Metadata) <- NULL
+#Metadata <- Metadata |> mutate(TheIdentity=paste(Specimen, ptype, Timepoint, Island, sep="_"))
+```
+
+```{r}
+#| label: Panel Information
+
+Example <- read.FCS(fcs_files[1], transformation=FALSE, truncate_max_range = FALSE)
+#Example <- CoerebaFlowFrame[[1]]
+
+TheColumns <- flowWorkspace::markernames(Example)
+Fluorophore <- names(TheColumns)
+Fluorophore <- gsub("-A", "", Fluorophore)
+
+ThePanel <- data.frame(Fluorophore, check.names=FALSE)
+
+ThePanel <- ThePanel |> 
+  mutate(Fluorophore = case_when(
+    Fluorophore == "PE-Vio770" ~ "PE-Vio 770",
+    Fluorophore == "PE-Dazzle594" ~ "PE-Dazzle 594",
+    TRUE ~ Fluorophore
+  ))
+
+ThePanel <- ThePanel |>  mutate(
+    Detector = map_chr(Fluorophore, \(f) Luciernaga::DetectorGuess(x = f, NumberDetectors = 64))
+  )
+
+ThePanel <- ThePanel |> 
+  mutate(Marker = TheColumns)
+
+DetectorOrder <- c("UV1", "UV2", "UV3", "UV4", "UV5", "UV6", "UV7", "UV8",
+               "UV9", "UV10", "UV11", "UV12", "UV13", "UV14", "UV15", "UV16",
+               "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8",
+               "V9", "V10", "V11","V12", "V13", "V14", "V15", "V16",
+               "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8",
+               "B9", "B10", "B11", "B12", "B13", "B14",
+               "YG1", "YG2", "YG3", "YG4", "YG5", "YG6", "YG7", "YG8", "YG9", "YG10",
+               "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8")
+
+ThePanel$Detector <- factor(ThePanel$Detector, levels=DetectorOrder)
+
+ThePanel <- ThePanel |> arrange(Detector) |> select(-Detector)
+```
+
+```{r}
+#| label: Coereba_Processing
+#| eval: FALSE
+
+TheBioconductor <- Coereba_Processing(x=Goodbye,
+ panel=ThePanel, themetadata=Metadata,
+ metadata_columns=c("bid", "ptype", "infant_sex", "Experiment", "Condition"),
+ SpecimenVariable="bid")
+```
+
+```{r}
+library(SummarizedExperiment)
+
+TheBioconductor@elementMetadata |> dim()
+keep <- rowData(TheBioconductor)$ZombieNIR == 0
+keep[is.na(keep)] <- FALSE
+
+SmallerBioconductor <- TheBioconductor[keep, ]
+SmallerBioconductor@elementMetadata |> dim()
+
+keep <- rowData(SmallerBioconductor)$PacificBlue == 0
+keep[is.na(keep)] <- FALSE
+
+CleanBioconductor <- SmallerBioconductor[keep, ]
+CleanBioconductor@elementMetadata |> dim()
+```
+
+```{r}
+#| eval: FALSE
+
+library(HDF5Array)
+
+H5Name <- paste0(Subset, "_SummarizedExperiment_h5")
+StoreHere <- file.path(OutputLocation, H5Name)
+
+saveHDF5SummarizedExperiment(CleanBioconductor,
+                             dir = StoreHere,
+                             replace = TRUE)
+
+# CleanBioconductor <- loadHDF5SummarizedExperiment("TheBioconductor_filtered_h5")
+```
+
+```{r}
+#| label: MarkerExpressions
+#?Coereba_MarkerExpressions
+Data <- Coereba_MarkerExpressions(x=CleanBioconductor, returnType="All", theassay="ratios")
+
+TheCSV <- paste0(Subset, "_MarkerExpressions.csv")
+StoreHere <- file.path(OutputLocation, TheCSV)
+
+write.csv(Data, StoreHere, row.names=FALSE)
+```
+
+```{r}
+#| label: MarkerPlots
+#| warning: FALSE
+
+shape_ptype <- c("HU" = 22, "HEU-lo" = 21, "HEU-hi" = 21)
+fill_ptype <- c("HU" = "white", "HEU-lo" = "darkgray", "HEU-hi" = "black")
+
+ThePlot <- Utility_MarkerPlots(data=Data, myfactor="ptype", shape_palette = shape_ptype, fill_palette = fill_ptype, panel=ThePanel, XAxisLevels=NULL, cex=0.5, size =1, corral.width = 0.5, MarkerName="Marker", savePlot = TRUE, filename = "CD4_Ctrl_All", style="separate", outpath = OutputLocation, width=18)
+```
+
+```{r}
+se <- CleanBioconductor
+
+is_HU <- colData(se)$ptype == "HEU-hi"
+is_HU[is.na(is_HU)] <- FALSE
+
+mat <- assay(se, "count")
+
+in_HU    <- rowSums(mat[, is_HU,  drop = FALSE] > 0, na.rm = TRUE) > 0
+in_other <- rowSums(mat[, !is_HU, drop = FALSE] > 0, na.rm = TRUE) > 0
+
+keep <- in_HU & !in_other
+
+table(keep)
+se_HU_only <- se[keep, ]
+se_HU_only
+
+mat  <- assay(se_HU_only)               # or assay(se_HU_only, "yourAssayName")
+expt <- colData(se_HU_only)$Experiment
+
+# Per cluster x experiment: TRUE if detected in any sample of that experiment
+by_expt <- sapply(split(seq_along(expt), expt), function(idx) {
+  rowSums(mat[, idx, drop = FALSE] > 0, na.rm = TRUE) > 0
+})
+
+# Number of distinct experiments each cluster appears in
+n_expt <- rowSums(by_expt)
+
+keep <- n_expt > 3
+
+table(keep)
+se_HU_multi <- se_HU_only[keep, ]
+se_HU_multi
+```
+
+
+
