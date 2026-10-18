@@ -1,0 +1,198 @@
+---
+title: "PaCMAP - CD8"
+format: html
+---
+
+
+```{r}
+library(flowWorkspace)
+library(Luciernaga)
+library(Coereba)
+library(flowGate)
+library(dplyr)
+library(stringr)
+library(purrr)
+```
+
+```{r}
+TheseScripts <- list.files("R", pattern=".R", full.names=TRUE)
+walk(.x=TheseScripts, .f=source)
+```
+
+```{r}
+Folder <- "Ctrl_Antibody"
+Subset <- "CD8"
+
+StorageLocation <- file.path("outputs", Folder, Subset)
+DownsampledFolder <- file.path(StorageLocation, "Downsampled")
+if (!dir.exists(DownsampledFolder)){dir.create(DownsampledFolder)}
+
+CoerebaFolder <- file.path(StorageLocation, "Coereba")
+if (!dir.exists(CoerebaFolder)){dir.create(CoerebaFolder)}
+
+OutputLocation <- CoerebaFolder
+```
+
+```{r}
+fcs_files <- list.files(StorageLocation,
+ pattern=".fcs", full.names=TRUE)
+
+UnmixedCytoSet <- load_cytoset_from_fcs(fcs_files,
+ truncate_max_range=FALSE, transformation=FALSE)
+
+UnmixedGatingSet <- GatingSet(UnmixedCytoSet)
+```
+
+```{r}
+TheName <- paste0(Subset, "Gates.csv")
+FinalSplitpointsPath <- file.path(OutputLocation, TheName)
+FinalSplitpoints <- read.csv(FinalSplitpointsPath, check.names=FALSE)
+```
+
+## Metadata
+
+Check the current metadata status.
+
+```{r}
+pData(UnmixedGatingSet)
+```
+
+```{r}
+Bid <- function(filename) {
+  bid <- str_extract(filename, "INF\\d{3}")
+  bid <- data.frame(bid, check.names=FALSE)
+}
+
+Condition <- function(filename) {
+  Condition <-str_extract(filename, "(?<=INF\\d{3}-)[A-Za-z]+(?=_Antibody)")
+  Condition  <- data.frame(Condition, check.names=FALSE)
+}
+
+Experiment <- function(filename) {
+  Experiment <- str_extract(filename, "ILT_\\d{2}")
+  Experiment <- data.frame(Experiment, check.names=FALSE)
+}
+```
+
+```{r}
+pd <- pData(UnmixedGatingSet)
+
+Names <- pd |> pull(name)
+
+TheNames <- pd
+TheBID <- map(.x=Names, .f=Bid) |> bind_rows()
+TheCondition <- map(.x=Names, .f=Condition) |> bind_rows()
+TheExperiment <- map(.x=Names, .f=Experiment) |> bind_rows()
+
+TheIntermediate <- bind_cols(TheNames, TheBID, TheCondition, TheExperiment)
+```
+
+```{r}
+TheMetadata <- file.path("data", "Metadata.csv")
+TheMetadataDF <- read.csv(TheMetadata, check.names=FALSE)
+AddThisMetada <- TheMetadataDF |> select(bid, ptype, infant_sex)
+UpdatedMetadata <- left_join(TheIntermediate, AddThisMetada, by="bid")
+rownames(UpdatedMetadata) <- rownames(pd)
+
+pData(UnmixedGatingSet) <- UpdatedMetadata
+```
+
+```{r}
+#| eval: FALSE
+pData(UnmixedGatingSet) |> View()
+```
+
+## Transformation
+
+Proceed to transform and visualize your data to ensure that everything looks okay before proceeding.
+
+```{r}
+#| label: "Biexponential Transformation"
+#| message: false
+Markers <- colnames(UnmixedCytoSet)
+KeptMarkers <- Markers[-grep("Time|FS|SC|SS|Original|-W$|-H$|AF", Markers)]
+MarkersForToday <- KeptMarkers
+
+Biexponential <- flowjo_biexp_trans(channelRange=4096, maxValue=4194304,
+     pos=5.62, neg=1, widthBasis=-1000)
+TransformList <- transformerList(KeptMarkers, Biexponential)
+UnmixedGatingSet <- transform(UnmixedGatingSet, TransformList)
+```
+
+```{r}
+markernames(UnmixedGatingSet[1])
+```
+
+```{r}
+ggcyto(UnmixedGatingSet[1], subset="root",
+ aes(x="BV480-A", y="PE-Vio770-A")) + geom_hex(bins=100)
+```
+
+# Coereba
+
+```{r}
+#| label: ListOfFlowFrames
+
+CoerebaFlowFrame <- Utility_Coereba(gs=UnmixedGatingSet, subsets="root",
+ sample.name=c("GROUPNAME", "TUBENAME"), reference=FinalSplitpointsPath, starter="Spark Blue 550-A",
+ inverse.transform = TRUE, returnType="flowframe", Individual=TRUE, outpath=NULL,
+ columns = KeptMarkers)
+```
+
+```{r}
+TestFlowFrame <- unlist(CoerebaFlowFrame)
+TestFlowSet <- flowCore::flowSet(TestFlowFrame)
+TestFlowGS <- GatingSet(TestFlowSet)
+
+TidyedCopy <- UpdatedMetadata
+
+IncompleteMetadata <- pData(TestFlowGS)
+rownames(TidyedCopy) <- rownames(IncompleteMetadata)
+UpdatedTidyedCopy <- TidyedCopy #|> mutate(Batch=paste0(Specimen, "_", ptype))
+pData(TestFlowGS) <- UpdatedTidyedCopy
+
+# pData(TestFlowGS) |> View()
+```
+
+```{r}
+GoodbyeFileName <- paste0("CoerebaConcatenate_", Subset)
+
+Goodbye <- Coereba_Concatenate(Set=TestFlowGS, metadata_cols=c("bid", "ptype", "infant_sex", "Experiment", "Condition"), outpath=OutputLocation, filename=GoodbyeFileName, inverse.transform=FALSE, returnType="fcs")
+
+#str(Goodbye)
+```
+
+```{r}
+TheFile <- file.path(OutputLocation, paste0(GoodbyeFileName, ".fcs"))
+DV_cf <- load_cytoset_from_fcs(TheFile, truncate_max_range = FALSE, transformation=FALSE)
+DV_GS <- GatingSet(DV_cf)
+DV_GS <- transform(DV_GS, TransformList)
+
+ggcyto(DV_GS[1], subset="root",
+ aes(x="BV480-A", y="PE-Vio770-A")) + geom_hex(bins=100)
+```
+
+```{r}
+library(PaCMAPvsPhate)
+
+PaCMAPName <- paste0(GoodbyeFileName, "_PaCMAP")
+
+Utility_PaCMAP(x=DV_GS, NewName=PaCMAPName, outpath=OutputLocation, notcolumns=c(
+  "APC-R700-A", "BV750-A",  "PE-Dazzle594-A", "BUV563-A", "Zombie NIR-A", "Pacific Blue-A", "BUV661-A",
+  "FITC-A", "Spark Blue 550-A", "BUV805-A", "BUV496-A")
+  )
+```
+
+```{r}
+ThePACMAPFile <- file.path(OutputLocation, paste0(PaCMAPName, ".fcs"))
+PACMAP_cf <- load_cytoset_from_fcs(ThePACMAPFile, truncate_max_range = FALSE, transformation=FALSE)
+PACMAP_GS <- GatingSet(PACMAP_cf)
+PACMAP_GS <- transform(PACMAP_GS, TransformList)
+colnames(PACMAP_GS)
+```
+
+```{r}
+ggcyto(PACMAP_GS[1], subset="root",
+ aes(x="PaCMAP_1", y="PaCMAP_2")) + geom_hex(bins=180)
+```
+
