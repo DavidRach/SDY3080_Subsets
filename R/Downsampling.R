@@ -22,7 +22,7 @@
 #'  
 #' 
 Downsampling <- function(x, subset, inverse.transform=TRUE, DownsampleCount,
-  addon, StorageLocation=NULL, returnType="fcs"){
+  addon, StorageLocation=NULL, returnType="fcs", negateUnderscore=FALSE){
   EventsInTheGate <- flowWorkspace::gs_pop_get_data(x, subset,
    inverse.transform=inverse.transform)
   MeasurementData <- Biobase::exprs(EventsInTheGate[[1]])
@@ -45,7 +45,13 @@ Downsampling <- function(x, subset, inverse.transform=TRUE, DownsampleCount,
   OriginalDescription <- flowCore::keyword(flowFrame)
 
   OriginalName <- OriginalDescription$`GUID`
+
+  if (negateUnderscore == FALSE){
   UpdatedName <- paste0("_", addon, ".fcs")
+  } else {
+  UpdatedName <- paste0(addon, ".fcs")  
+  }
+ 
   UpdatedGUID <- sub(".fcs", UpdatedName, OriginalName) #Swtiching out .fcs for Updated Name via the sub function
   OriginalDescription$`GUID` <- UpdatedGUID
 
