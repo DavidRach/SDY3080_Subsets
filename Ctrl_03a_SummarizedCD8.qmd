@@ -272,7 +272,9 @@ write.csv(Data, StoreHere, row.names=FALSE)
 shape_ptype <- c("HU" = 22, "HEU-lo" = 21, "HEU-hi" = 21)
 fill_ptype <- c("HU" = "white", "HEU-lo" = "darkgray", "HEU-hi" = "black")
 
-ThePlot <- Utility_MarkerPlots(data=Data, myfactor="ptype", shape_palette = shape_ptype, fill_palette = fill_ptype, panel=ThePanel, XAxisLevels=NULL, cex=0.5, size =1, corral.width = 0.5, MarkerName="Marker", savePlot = TRUE, filename = "CD4_Ctrl_All", style="separate", outpath = OutputLocation, width=18)
+ThisFilesName <- paste0(Subset, "_Ctrl_All")
+
+ThePlot <- Utility_MarkerPlots(data=Data, myfactor="ptype", shape_palette = shape_ptype, fill_palette = fill_ptype, panel=ThePanel, XAxisLevels=NULL, cex=0.5, size =1, corral.width = 0.5, MarkerName="Marker", savePlot = TRUE, filename = ThisFilesName, style="separate", outpath = OutputLocation, width=18)
 ```
 
 ```{r}
