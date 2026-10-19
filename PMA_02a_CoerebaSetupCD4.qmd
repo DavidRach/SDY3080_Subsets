@@ -138,13 +138,13 @@ markernames(UnmixedGatingSet[1])
 
 ```{r}
 ggcyto(UnmixedGatingSet[1], subset="root",
- aes(x="APC-Fire 750", y="BUV395-A")) + geom_hex(bins=100)
+ aes(x="APC-Fire 750-A", y="BUV395-A")) + geom_hex(bins=100)
 ```
 
 # Coereba
 
 ```{r}
-TheGatingConstraints <- file.path("data", "UpdatedTemplateForGates.csv")
+TheGatingConstraints <- file.path("data", "UpdatedTemplateForGates_PMA.csv")
 TheGateConstraintsCSV <- read.csv(TheGatingConstraints, check.names=FALSE)
 ```
 
@@ -193,7 +193,7 @@ library(shinydashboard)
 #    c(".fcs")
 #    root
 #    root
-#    /home/david/Documents/SDY3080_Subsets/outputs/Ctrl_Antibody/CD4/Coereba/SplitpointCSVs
+#    /home/david/Documents/SDY3080_Subsets/outputs/PMA_Antibody/CD4/Coereba/SplitpointCSVs
 
 Coereba_App()
 ```
