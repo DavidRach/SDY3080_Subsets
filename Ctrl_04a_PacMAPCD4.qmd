@@ -193,6 +193,13 @@ colnames(PACMAP_GS)
 
 ```{r}
 ggcyto(PACMAP_GS[1], subset="root",
+ aes(x="BV510-A", y="BUV395-A")) + geom_hex(bins=100)
+
+ggcyto(PACMAP_GS[1], subset="root",
  aes(x="PaCMAP_1", y="PaCMAP_2")) + geom_hex(bins=180)
+```
+
+```{r}
+print("Goodbye")
 ```
 
