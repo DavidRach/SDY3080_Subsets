@@ -33,6 +33,8 @@ OutputLocation <- CoerebaFolder
 ```
 
 ```{r}
+#| eval: FALSE
+
 fcs_files <- list.files(StorageLocation,
  pattern=".fcs", full.names=TRUE)
 
@@ -47,7 +49,7 @@ UnmixedGatingSet <- GatingSet(UnmixedCytoSet)
 ```{r}
 #| eval: FALSE
 DownsampledCD4s <- purrr::map(.x=UnmixedGatingSet, subset="root",
- .f=Downsampling, DownsampleCount=50000, addon="",
+ .f=Downsampling, DownsampleCount=25000, addon="",
   returnType="fcs", StorageLocation=DownsampledFolder,
   inverse.transform=FALSE, negateUnderscore=TRUE)
 ```
