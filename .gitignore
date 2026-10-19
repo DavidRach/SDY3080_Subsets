@@ -1,5 +1,6 @@
 /data/Ctrl_Antibody
 /data/PMA_Antibody
 /outputs/Ctrl_Antibody/SDY3080_Ctrl.gs/
+/outputs/PMA_Antibody/SDY3080_PMA.gs/
 *.fcs
 .vdoc.*
