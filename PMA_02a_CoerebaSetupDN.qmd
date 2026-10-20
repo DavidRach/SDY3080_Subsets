@@ -1,0 +1,247 @@
+---
+title: "Coereba Set Up - CD4 T cells"
+format: html
+---
+
+```{r}
+library(flowWorkspace)
+library(Luciernaga)
+library(Coereba)
+library(flowGate)
+library(dplyr)
+library(stringr)
+library(purrr)
+```
+
+```{r}
+TheseScripts <- list.files("R", pattern=".R", full.names=TRUE)
+walk(.x=TheseScripts, .f=source)
+```
+
+```{r}
+Folder <- "PMA_Antibody"
+Subset <- "DN"
+
+StorageLocation <- file.path("outputs", Folder, Subset)
+DownsampledFolder <- file.path(StorageLocation, "Downsampled")
+if (!dir.exists(DownsampledFolder)){dir.create(DownsampledFolder)}
+
+CoerebaFolder <- file.path(StorageLocation, "Coereba")
+if (!dir.exists(CoerebaFolder)){dir.create(CoerebaFolder)}
+
+OutputLocation <- CoerebaFolder
+```
+
+Copy over prior effort. 
+```{r}
+PriorGates <- file.path("outputs", Folder, "CD8", "Coereba", "CD8Gates.csv")
+SaveHere <- file.path(CoerebaFolder)
+file.copy(PriorGates, SaveHere)
+file.rename(file.path(CoerebaFolder, "CD8Gates.csv"),
+            file.path(CoerebaFolder, "SecondGates.csv"))
+```
+
+```{r}
+fcs_files <- list.files(StorageLocation,
+ pattern=".fcs", full.names=TRUE)
+
+UnmixedCytoSet <- load_cytoset_from_fcs(fcs_files,
+ truncate_max_range=FALSE, transformation=FALSE)
+
+UnmixedGatingSet <- GatingSet(UnmixedCytoSet)
+```
+
+## Downsampling
+
+```{r}
+#| eval: FALSE
+
+DownsampledDNs <- purrr::map(.x=UnmixedGatingSet, subset="root",
+ .f=Downsampling, DownsampleCount=25000, addon="",
+  returnType="fcs", StorageLocation=DownsampledFolder,
+  inverse.transform=FALSE, negateUnderscore=TRUE)
+```
+
+```{r}
+fcs_files <- list.files(DownsampledFolder,
+ pattern=".fcs", full.names=TRUE)
+
+UnmixedCytoSet <- load_cytoset_from_fcs(fcs_files,
+ truncate_max_range=FALSE, transformation=FALSE)
+
+UnmixedGatingSet <- GatingSet(UnmixedCytoSet)
+```
+
+## Metadata
+
+Check the current metadata status.
+
+```{r}
+pData(UnmixedGatingSet)
+```
+
+```{r}
+Bid <- function(filename) {
+  bid <- str_extract(filename, "INF\\d{3}")
+  bid <- data.frame(bid, check.names=FALSE)
+}
+
+Condition <- function(filename) {
+  Condition <-str_extract(filename, "(?<=INF\\d{3}-)[A-Za-z]+(?=_Antibody)")
+  Condition  <- data.frame(Condition, check.names=FALSE)
+}
+
+Experiment <- function(filename) {
+  Experiment <- str_extract(filename, "ILT_\\d{2}")
+  Experiment <- data.frame(Experiment, check.names=FALSE)
+}
+```
+
+```{r}
+pd <- pData(UnmixedGatingSet)
+
+Names <- pd |> pull(name)
+
+TheNames <- pd
+TheBID <- map(.x=Names, .f=Bid) |> bind_rows()
+TheCondition <- map(.x=Names, .f=Condition) |> bind_rows()
+TheExperiment <- map(.x=Names, .f=Experiment) |> bind_rows()
+
+TheIntermediate <- bind_cols(TheNames, TheBID, TheCondition, TheExperiment)
+```
+
+```{r}
+TheMetadata <- file.path("data", "Metadata.csv")
+TheMetadataDF <- read.csv(TheMetadata, check.names=FALSE)
+AddThisMetada <- TheMetadataDF |> select(bid, ptype, infant_sex)
+UpdatedMetadata <- left_join(TheIntermediate, AddThisMetada, by="bid")
+rownames(UpdatedMetadata) <- rownames(pd)
+
+pData(UnmixedGatingSet) <- UpdatedMetadata
+```
+
+```{r}
+#| eval: FALSE
+pData(UnmixedGatingSet) |> View()
+```
+
+## Transformation
+
+Proceed to transform and visualize your data to ensure that everything looks okay before proceeding.
+
+```{r}
+#| label: "Biexponential Transformation"
+#| message: false
+Markers <- colnames(UnmixedCytoSet)
+KeptMarkers <- Markers[-grep("Time|FS|SC|SS|Original|-W$|-H$|AF", Markers)]
+MarkersForToday <- KeptMarkers
+
+Biexponential <- flowjo_biexp_trans(channelRange=4096, maxValue=4194304,
+     pos=5.62, neg=1, widthBasis=-1000)
+TransformList <- transformerList(KeptMarkers, Biexponential)
+UnmixedGatingSet <- transform(UnmixedGatingSet, TransformList)
+```
+
+```{r}
+markernames(UnmixedGatingSet[1])
+```
+
+```{r}
+ggcyto(UnmixedGatingSet[1], subset="root",
+ aes(x="BV480-A", y="PE-Vio770-A")) + geom_hex(bins=100)
+```
+
+# Coereba
+
+```{r}
+TheGatingConstraints <- file.path("data", "UpdatedTemplateForGates_PMA.csv")
+TheGateConstraintsCSV <- read.csv(TheGatingConstraints, check.names=FALSE)
+```
+
+```{r}
+#| eval: FALSE
+
+TheUpdatedGateCutoffs <- purrr::map(.x=UnmixedGatingSet, .f=Coereba_GateCutoffs,
+  subset="root", sample.name=c("GROUPNAME", "TUBENAME"), desiredCols=MarkersForToday,
+  GatingTemplate=TheGatingConstraints, GateOverwrite=FALSE) %>% bind_rows()
+
+SecondGates <- file.path(OutputLocation, "SecondGates.csv")
+write.csv(TheUpdatedGateCutoffs, SecondGates, row.names=FALSE)
+```
+
+```{r}
+SecondGatesPath <- file.path(OutputLocation, "SecondGates.csv")
+SecondGates <- read.csv(SecondGatesPath, check.names=FALSE)
+```
+
+```{r}
+#| label: NbyN plot check 2
+#| message: FALSE
+#| warning: FALSE
+
+Plot <- Utility_NbyNPlots(x=UnmixedGatingSet[1], sample.name=c("GROUPNAME", "TUBENAME"), experiment="SDY3080",
+condition=Subset, removestrings=".fcs", marginsubset="root", gatesubset="root", 
+ycolumn="Spark Blue 550-A", bins=150, clearance=0.1, 
+gatelines=TRUE, reference=SecondGates, outpath=OutputLocation, returntype="pdf")
+```
+
+```{r}
+#| label: Coereba_App
+#| eval: false
+
+TheClickInfo <- file.path(OutputLocation, "SplitpointCSVs")
+if(!dir.exists(TheClickInfo)){dir.create(TheClickInfo)}
+
+library(DT)
+library(plotly)
+library(shiny)
+library(shinydashboard)
+
+#    UnmixedGatingSet
+#    c("GROUPNAME", "TUBENAME")
+#    120
+#    c(".fcs")
+#    root
+#    root
+#    /home/david/Documents/SDY3080_Subsets/outputs/PMA_Antibody/DN/Coereba/SplitpointCSVs
+
+Coereba_App()
+```
+
+```{r}
+TheOldCSV <- file.path(OutputLocation, "SecondGates.csv")
+#TheClickData <- read.csv(TheClickInfo, check.names=FALSE)
+#TheClickData
+```
+
+We can then run `Coereba_UpdateGates()` and examine how the values are correspondingly updated.
+
+```{r}
+ShinyGatesSplitpoints <- Coereba_UpdateGates(Clicks=TheClickInfo, Old=TheOldCSV,
+  export=FALSE, outpath=OutputLocation, fileName="UpdatedCSV")
+
+ShinyGatesSplitpoints
+```
+
+```{r}
+TheName <- paste0(Subset, "Gates.csv")
+
+ShinyGatesPath <- file.path(OutputLocation, TheName)
+write.csv(ShinyGatesSplitpoints, ShinyGatesPath, row.names=FALSE)
+```
+
+```{r}
+#| label: NbyN plot check 2
+#| message: FALSE
+#| warning: FALSE
+
+ShinyGatesPath <- file.path(OutputLocation, TheName)
+ShinyGatesSplitpoints <- read.csv(ShinyGatesPath, check.names=FALSE)
+
+UpdatedCondition <- paste0(Subset, "_After")
+
+Plot <- Utility_NbyNPlots(x=UnmixedGatingSet[1], sample.name=c("GROUPNAME", "TUBENAME"), experiment="SDY3080",
+condition=UpdatedCondition, removestrings=".fcs", marginsubset="root", gatesubset="root", 
+ycolumn="BUV395-A", bins=150, clearance=0.1, 
+gatelines=TRUE, reference=ShinyGatesSplitpoints, outpath=OutputLocation, returntype="pdf")
+```
