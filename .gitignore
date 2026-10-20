@@ -4,3 +4,4 @@
 /outputs/PMA_Antibody/SDY3080_PMA.gs/
 *.fcs
 .vdoc.*
+*.gs

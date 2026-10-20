@@ -1,0 +1,159 @@
+---
+title: "PaCMAP - CD4"
+format: html
+---
+
+
+```{r}
+library(flowWorkspace)
+library(Luciernaga)
+library(Coereba)
+library(flowGate)
+library(dplyr)
+library(stringr)
+library(purrr)
+```
+
+```{r}
+TheseScripts <- list.files("R", pattern=".R", full.names=TRUE)
+walk(.x=TheseScripts, .f=source)
+```
+
+```{r}
+Folder <- "Ctrl_Antibody"
+Subset <- "CD4"
+
+StorageLocation <- file.path("outputs", Folder, Subset)
+DownsampledFolder <- file.path(StorageLocation, "Downsampled")
+if (!dir.exists(DownsampledFolder)){dir.create(DownsampledFolder)}
+
+CoerebaFolder <- file.path(StorageLocation, "Coereba")
+if (!dir.exists(CoerebaFolder)){dir.create(CoerebaFolder)}
+
+OutputLocation <- CoerebaFolder
+```
+
+```{r}
+GoodbyeFileName <- paste0("CoerebaConcatenate_", Subset)
+
+PaCMAPName <- paste0(GoodbyeFileName, "_PaCMAP")
+
+ThePACMAPFile <- file.path(OutputLocation, paste0(PaCMAPName, ".fcs"))
+PACMAP_cf <- load_cytoset_from_fcs(ThePACMAPFile, truncate_max_range = FALSE, transformation=FALSE)
+PACMAP_GS <- GatingSet(PACMAP_cf)
+```
+
+```{r}
+#| label: "Biexponential Transformation"
+#| message: false
+Markers <- colnames(PACMAP_GS)
+KeptMarkers <- Markers[-grep("Time|FS|SC|SS|Original|-W$|-H$|AF|Coereba|PaCMAP", Markers)]
+MarkersForToday <- KeptMarkers
+
+Biexponential <- flowjo_biexp_trans(channelRange=4096, maxValue=4194304,
+     pos=5.62, neg=1, widthBasis=-1000)
+TransformList <- transformerList(KeptMarkers, Biexponential)
+
+PACMAP_GS <- transform(PACMAP_GS, TransformList)
+colnames(PACMAP_GS)
+```
+
+```{r}
+ggcyto(PACMAP_GS[1], subset="root",
+ aes(x="BV480-A", y="PE-Vio770-A")) + geom_hex(bins=100)
+
+ggcyto(PACMAP_GS[1], subset="root",
+ aes(x="PaCMAP_1", y="PaCMAP_2")) + geom_hex(bins=180)
+```
+
+# Gating
+
+```{r}
+plot(PACMAP_GS)
+```
+
+```{r}
+#| eval: FALSE
+flowGate::gs_gate_interactive(gs=PACMAP_GS, filterId="1", sample=1,
+dims=list("PaCMAP_1", "PaCMAP_2"), subset="root")
+```
+
+```{r}
+#| eval: FALSE
+flowGate::gs_gate_interactive(gs=PACMAP_GS, filterId="2", sample=1,
+dims=list("PaCMAP_1", "PaCMAP_2"), subset="root")
+```
+
+```{r}
+#| eval: FALSE
+flowGate::gs_gate_interactive(gs=PACMAP_GS, filterId="3", sample=1,
+dims=list("PaCMAP_1", "PaCMAP_2"), subset="root")
+```
+
+```{r}
+#| eval: FALSE
+flowGate::gs_gate_interactive(gs=PACMAP_GS, filterId="4", sample=1,
+dims=list("PaCMAP_1", "PaCMAP_2"), subset="root")
+```
+
+```{r}
+#| eval: FALSE
+flowGate::gs_gate_interactive(gs=PACMAP_GS, filterId="5", sample=1,
+dims=list("PaCMAP_1", "PaCMAP_2"), subset="root")
+```
+
+```{r}
+#| eval: FALSE
+flowGate::gs_gate_interactive(gs=PACMAP_GS, filterId="6", sample=1,
+dims=list("PaCMAP_1", "PaCMAP_2"), subset="root")
+```
+
+```{r}
+#| eval: FALSE
+flowGate::gs_gate_interactive(gs=PACMAP_GS, filterId="7", sample=1,
+dims=list("PaCMAP_1", "PaCMAP_2"), subset="root")
+```
+
+```{r}
+#| eval: FALSE
+flowGate::gs_gate_interactive(gs=PACMAP_GS, filterId="8", sample=1,
+dims=list("PaCMAP_1", "PaCMAP_2"), subset="root")
+```
+
+```{r}
+PaCMAPPath <- file.path(StorageLocation, "PaCMAP")
+if(!dir.exists(PaCMAPPath)){dir.create(PaCMAPPath)}
+
+PacMAPGS <- paste0(PaCMAPName, ".gs")
+SavePaCMAPHere <- file.path(PaCMAPPath, PacMAPGS)
+```
+
+```{r}
+#| eval: FALSE
+save_gs(PACMAP_GS, SavePaCMAPHere)
+```
+
+```{r}
+plot(PACMAP_GS)
+```
+
+```{r}
+TheIslands <- gsub("/", "", gs_get_pop_paths(PACMAP_GS))
+TheIslands <- TheIslands[!stringr::str_detect(TheIslands, "root")]
+
+AllDNsPMA <- purrr::map2(
+  .x = TheIslands,
+  .y = TheIslands, 
+  .f = ~ Renaming(
+    gs              = PACMAP_GS,
+    subset          = .x,
+    rename_sufix    = .y,
+    DownsampleCount = 10000000,
+    rename_prefix   = Subset,
+    returnType      = "fcs",
+    StorageLocation = PaCMAPPath
+  )
+)
+```
+
+
