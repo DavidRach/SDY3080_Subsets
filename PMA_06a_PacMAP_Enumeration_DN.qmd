@@ -119,6 +119,8 @@ write.csv(Data, StoreHere, row.names=FALSE)
 shape_ptype <- c("HU" = 22, "HEU-lo" = 21, "HEU-hi" = 21)
 fill_ptype <- c("HU" = "white", "HEU-lo" = "darkgray", "HEU-hi" = "black")
 
+Data$ptype <- factor(Data$ptype, levels=c("HU", "HEU-lo", "HEU-hi"))
+
 ThisFilesName <- paste0(Subset, "_", Index, "_PMA")
 
 ThePlot <- Utility_MarkerPlots(data=Data, myfactor="ptype", shape_palette = shape_ptype, fill_palette = fill_ptype, panel=ThePanel, XAxisLevels=NULL, cex=0.5, size =1, corral.width = 0.5, MarkerName="Marker", savePlot = TRUE, filename = ThisFilesName, style="separate", outpath = OutputLocation, width=18)
