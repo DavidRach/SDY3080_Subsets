@@ -34,6 +34,8 @@ OutpathLocation <- file.path(PaCMAPPath, "Islands")
 if(!dir.exists(OutpathLocation)){dir.create(OutpathLocation)}
 ```
 
+# Initial Run
+
 ```{r}
 fcs_files <- list.files(PaCMAPPath, pattern=".fcs", full.names=TRUE)
 IslandsSet <- load_cytoset_from_fcs(fcs_files, truncate_max_range = FALSE, transformation=FALSE)
@@ -138,3 +140,54 @@ Index <- 1:length(IslandsSet)
 
 walk(.f=RapidFire, .x=Index, IslandsSet=IslandsSet, OutputLocation=OutpathLocation, Subset=Subset)
 ```
+
+# Stop
+
+```{r}
+CSVs <- list.files(OutpathLocation, pattern=".csv", full.names=TRUE)
+Names <- 1:length(CSVs)
+
+#devtools::load_all("/home/david/Documents/Coereba")
+
+RemoveMarkers <- c("Lineage-", "Viability", "CXCR3", "CCR7")
+MarkerOrder <- c("CD7", "CD3", "VD2", "Va7.2", "Va24Ja18", "CD8", "CD4", "CD26", "CCR6", "CD161",
+                 "NKG2D", "CD56", "CD16", "CD62L", "CD27", "CD45RA", "CD127", "CD25", "CCR4",
+                 "PD1", "CD38", "CD69", "TNFa", "IFNg", "CD107a")
+
+Table <- HeatmapParser(x=CSVs, y=Names, RemoveMarkers = RemoveMarkers, MarkerOrder=MarkerOrder)
+```
+
+```{r}
+library(gt)
+Bolded <- Table #|> 
+#  cols_label(Vd2_CD4 ~ md('**V&delta;2<br>CD4**')) |>
+#  cols_label(Vd2_CD8 ~ md('**V&delta;2<br>CD8**')) |> 
+ # cols_label(Vd2_DN ~ md('**V&delta;2<br>DN**')) |>
+#  cols_label(Vd2_T17 ~ md('**V&delta;2<br>T17**')) |> 
+#  cols_label(Vd2_PD1 ~ md('**V&delta;2<br>PD1**')) |>
+#  cols_label(Marker ~ md('**Marker<br>**')) |> 
+#  cols_label(MAITs ~ md('**MAITs<br>**')) |>
+#  cols_label(NKTs ~ md('**NKTs<br>**'))
+
+Greeked <- Bolded |>
+  sub_values(pattern="Vd2", replacement = "V\u03B42") |>
+  sub_values(pattern="TNFa", replacement = "TNF\u03B1") |> 
+  sub_values(pattern="IFNg", replacement = "IFN\u03B3") |>
+  sub_values(pattern="hMR1", replacement = "V\u03B17.2") |> 
+  sub_values(pattern="hCD1d", replacement = "V\u03B124J\u03B118")
+
+Greeked <- Greeked |> opt_table_outline(style="solid", width=px(2), color="black") |>
+  tab_options(column_labels.border.top.style = "solid", column_labels.border.top.width = px(2),
+              column_labels.border.top.color = "black", table.border.bottom.style = "double",
+              table.border.bottom.width = px(2), table.border.bottom.color = "black", 
+              table.font.size = 22)
+```
+
+```{r}
+filename <- paste(Subset, Folder, "Heatmap.png", sep="_")
+StorageLocation <- file.path(OutpathLocation, filename)
+Greeked |> gtsave(StorageLocation, vwidth = 1500, vheight = 1000)
+```
+
+
+
