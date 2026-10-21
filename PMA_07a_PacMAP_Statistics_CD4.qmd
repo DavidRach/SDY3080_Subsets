@@ -45,7 +45,7 @@ Names <- paste0(Subset, "_", Names)
 StatsWrapper <- function(x, y){
   Dataset <- read.csv(x, check.names=FALSE)
   Dataset <- Dataset |> select("bid", "ptype", "infant_sex", where(is.numeric))
-  Dataset$bid <- factor(Dataset$bid, levels=c("HU", "HEU-lo", "HEU-hi"))
+  Dataset$ptype <- factor(Dataset$ptype, levels=c("HU", "HEU-lo", "HEU-hi"))
   Dataset$infant_sex <- factor(Dataset$infant_sex, levels=c("Female", "Male"))
 
   Dataset <- Dataset |>
@@ -83,16 +83,95 @@ StatsWrapper <- function(x, y){
 ```
 
 ```{r}
-Dataset <- map2(.f=StatsWrapper, .x=CSVs, .y=Names) |> bind_rows()
+DataMiningOperator <- function(x, y){
+  Dataset <- read.csv(x, check.names=FALSE)
+  Dataset <- Dataset |> select("bid", "ptype", "infant_sex", where(is.numeric))
+  Dataset$ptype <- factor(Dataset$ptype, levels=c("HU", "HEU-lo", "HEU-hi"))
+  Dataset$infant_sex <- factor(Dataset$infant_sex, levels=c("Female", "Male"))
+  Dataset <- Dataset |> mutate(Island=y)
 
-Dataset$pvalue <- as.numeric(Dataset$pvalue)
+  Dataset <- Dataset |>
+  select(where(\(x) !is.numeric(x) || any(x != 0, na.rm = TRUE)))
 
-Dataset <- Dataset |> arrange(pvalue)
+  return(Dataset)
+}
+```
 
+```{r}
+# data <- DataMining
+# stat_hits <- StatsMining
+CryingInBayesian <- function(data, stat_hits, OutPath, ...){
+
+  StatsData <- stat_hits |> mutate(Identifier=paste(Island, marker, Comparison, sep="-"))
+
+  TheseComparisons <- StatsData |> pull(Identifier)
+
+  Plots <- map(.x=TheseComparisons, .f=FrequentistChild, data=data,
+   internal_stats=StatsData, OutPath=OutPath)
+
+  return(Plots)
+
+}
+```
+
+```{r}
+FrequentistChild <- function(x, data, internal_stats, theshape, thefill, OutPath, ...){
+  shape_ptype <- c("HU" = 22, "HEU-lo" = 21, "HEU-hi" = 21)
+  fill_ptype <- c("HU" = "white", "HEU-lo" = "darkgray", "HEU-hi" = "black")
+
+  shape_sex <- c("Female" = 22, "Male" = 21)
+  fill_sex <- c("Female" = "white", "Male" = "black")
+
+  ThisChild <- internal_stats |> filter(Identifier %in% x)
+  var <- ThisChild |> pull(marker)
+  myfactor <- ThisChild |> pull(Comparison)
+  ThisIsland <- ThisChild |> pull(Island)
+  InternalData <- data |> filter(Island %in% ThisIsland)
+
+  if (myfactor == "ptype"){
+    theshape <- shape_ptype
+    thefill <- fill_ptype
+  } else {
+    theshape <- shape_sex
+    thefill <- fill_sex
+  }
+
+  Plot <- suppressWarnings(
+    Utility_Behemoth(data = InternalData, var = var,
+      myfactor = myfactor, normality = "dagostino", shape_palette = theshape,
+      fill_palette = thefill, cex = 2, size = 3, corral.width = 1,
+      statsHeight = 1, scalePercent = TRUE, correction = "BH", keepNS = FALSE)
+  )
+
+  Plot <- Plot + labs(title=ThisChild)
+
+  ThePlotName <- paste0(x, ".png")
+  TheFile <- file.path(OutPath, ThePlotName)
+  ggsave(filename = TheFile, Plot, dpi = 600, width = 4, height = 3)
+
+  return(Plot)
+}
+```
+
+```{r}
 StatsPath <- file.path(StorageLocation, "Stats")
 
 if(!dir.exists(StatsPath)){dir.create(StatsPath)}
+```
 
+```{r}
+Dataset <- map2(.f=StatsWrapper, .x=CSVs, .y=Names) |> bind_rows()
+Dataset$pvalue <- as.numeric(Dataset$pvalue)
+Dataset <- Dataset |> arrange(pvalue)
+```
+
+```{r}
+DataMining <- map2(.f=DataMiningOperator, .x=CSVs, .y=Names) |> bind_rows()
+StatsMining <- Dataset |> filter(pvalue < 0.05) |> arrange(Island, Comparison)
+Here <- CryingInBayesian(data=DataMining, stat_hits=StatsMining, OutPath=StatsPath)
+```
+
+```{r}
 SaveName <- paste(Subset, Folder, "Stats.csv", sep="_")
 StoreAwayHere <- file.path(StatsPath, SaveName)
 write.csv(Dataset, StoreAwayHere, row.names=FALSE)
