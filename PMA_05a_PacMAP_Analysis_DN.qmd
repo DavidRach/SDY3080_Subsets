@@ -69,10 +69,6 @@ ggcyto(PACMAP_GS[1], subset="root",
 # Gating
 
 ```{r}
-plot(PACMAP_GS)
-```
-
-```{r}
 #| eval: FALSE
 flowGate::gs_gate_interactive(gs=PACMAP_GS, filterId="Island1", sample=1,
 dims=list("PaCMAP_1", "PaCMAP_2"), subset="root")
@@ -110,13 +106,19 @@ save_gs(PACMAP_GS, SavePaCMAPHere)
 ```
 
 ```{r}
+PACMAP_GS <- load_gs(SavePaCMAPHere)
+```
+
+```{r}
 plot(PACMAP_GS)
 ```
 
 ```{r}
 TheIslands <- gsub("/", "", gs_get_pop_paths(PACMAP_GS))
 TheIslands <- TheIslands[!stringr::str_detect(TheIslands, "root")]
+```
 
+```{r}
 AllDNsPMA <- purrr::map2(
   .x = TheIslands,
   .y = TheIslands, 

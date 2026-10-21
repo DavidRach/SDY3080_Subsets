@@ -1,0 +1,155 @@
+---
+title: "PaCMAP - DN"
+format: html
+---
+
+# Getting Started
+
+## Loading In 
+
+```{r}
+library(flowWorkspace)
+library(Luciernaga)
+library(Coereba)
+library(flowGate)
+library(dplyr)
+library(stringr)
+library(purrr)
+```
+
+```{r}
+TheseScripts <- list.files("R", pattern=".R", full.names=TRUE)
+walk(.x=TheseScripts, .f=source)
+```
+
+```{r}
+Folder <- "Ctrl_Antibody"
+Subset <- "DN"
+
+StorageLocation <- file.path("outputs", Folder, Subset)
+
+PaCMAPPath <- file.path(StorageLocation, "PaCMAP")
+if(!dir.exists(PaCMAPPath)){dir.create(PaCMAPPath)}
+
+GoodbyeFileName <- paste0("CoerebaConcatenate_", Subset)
+PaCMAPName <- paste0(GoodbyeFileName, "_PaCMAP")
+
+PacMAPGS <- paste0(PaCMAPName, ".gs")
+SavePaCMAPHere <- file.path(PaCMAPPath, PacMAPGS)
+```
+
+```{r}
+PACMAP_GS <- load_gs(SavePaCMAPHere)
+```
+
+```{r}
+ggcyto(PACMAP_GS[1], subset="root",
+ aes(x="BV480-A", y="PE-Vio770-A")) + geom_hex(bins=100)
+
+ggcyto(PACMAP_GS[1], subset="root",
+ aes(x="PaCMAP_1", y="PaCMAP_2")) + geom_hex(bins=180)
+
+plot(PACMAP_GS)
+```
+
+```{r}
+#gs <- PACMAP_GS
+
+BigSandworm <- function(gs){
+  Paths <- gs_get_pop_paths(gs)
+  Paths <- gsub("/", "", Paths)
+  These <- Paths[!stringr::str_detect(Paths, "root")]
+
+  BigSandworm <- map(.x=These, .f=LittleSandworm, gs=gs) |> bind_rows()
+  return(BigSandworm)
+}
+
+LittleSandworm <- function(x, gs){
+  TheSandSet <- gs_pop_get_data(gs, x, inverse.transform = FALSE)
+  TheRetrieved <- Coereba::Coereba_FCS_Reversal(TheSandSet[[1]])
+  TheRetrieved <- TheRetrieved |> select(where(is.character))
+  TheRetrieved <- TheRetrieved |>
+    group_by(bid, ptype, infant_sex) |>
+    summarise(Count = n(), .groups = "drop")
+  TheRetrieved <- TheRetrieved |> mutate(Island = x) |> relocate(Island, .before=1)
+  return(TheRetrieved)
+}
+
+# data <- ChipShatter
+DesertMouse <- function(data, column="Island", Identity="bid", myfactor="ptype",
+  subset="ThisName", OutPath){
+
+  data <- data |>
+    group_by(across(all_of(Identity))) |>
+    mutate(Total = sum(Count),
+           Ratio = Count / Total) |>
+    ungroup()
+
+  TheIslands <- data |> pull(column) |> unique()
+  # x <- TheIslands[1]
+
+
+  Plots <- map(.x=TheIslands, .f=DesertMouseVi, data=data, column=column,
+  myfactor=myfactor, subset=subset, OutPath=OutPath)
+  return(Plots)
+}
+
+DesertMouseVi <- function(x, data, column, myfactor, subset, OutPath){
+
+  shape_ptype <- c("HU" = 22, "HEU-lo" = 21, "HEU-hi" = 21)
+  fill_ptype <- c("HU" = "white", "HEU-lo" = "darkgray", "HEU-hi" = "black")
+
+  shape_sex <- c("Female" = 22, "Male" = 21)
+  fill_sex <- c("Female" = "white", "Male" = "black")
+
+  if (myfactor == "ptype"){
+    theshape <- shape_ptype
+    thefill <- fill_ptype
+  } else {
+    theshape <- shape_sex
+    thefill <- fill_sex
+  }
+
+  Internal <- data |> filter(.data[[column]] %in% x)
+
+  Internal$ptype <- factor(Internal$ptype, levels=c("HU", "HEU-lo", "HEU-hi"))
+  Internal$infant_sex <- factor(Internal$infant_sex, levels=c("Female", "Male"))
+  
+  Plot <- suppressWarnings(
+    Utility_Behemoth(data = Internal, var = "Ratio",
+      myfactor = myfactor, normality = "dagostino", shape_palette = theshape,
+      fill_palette = thefill, cex = 2, size = 3, corral.width = 1,
+      statsHeight = 1, scalePercent = TRUE, correction = "BH", keepNS = FALSE)
+  )
+
+  Filename <- paste0(subset, "_", x)
+  Plot <- Plot + labs(title = Filename)
+
+  ThePlotName <- paste0(Filename, ".png")
+  TheFile <- file.path(OutPath, ThePlotName)
+  ggsave(filename = TheFile, Plot, dpi = 600, width = 4, height = 3)
+
+  return(Plot)
+}
+```
+
+```{r}
+Delivery <- BigSandworm(gs=PACMAP_GS)
+
+Condition <- gsub("_Antibody", "", Folder)
+theSubset <- paste(Subset, Condition, sep="_")
+
+theSubset2 <- paste0(theSubset, "_ptype")
+
+DesertMouse(data=Delivery, column="Island", Identity="bid", myfactor="ptype",
+  subset=theSubset2, OutPath=PaCMAPPath)
+
+theSubset3 <- paste0(theSubset, "_sex")
+
+DesertMouse(data=Delivery, column="Island", Identity="bid", myfactor="infant_sex",
+  subset=theSubset3, OutPath=PaCMAPPath)
+```
+
+```{r}
+print("Goodbye")
+```
