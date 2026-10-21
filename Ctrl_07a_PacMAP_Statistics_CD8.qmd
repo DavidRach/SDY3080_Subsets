@@ -1,0 +1,103 @@
+---
+title: "Stats - CD8"
+format: html
+---
+
+# Getting Started
+
+## Loading In 
+
+```{r}
+library(flowWorkspace)
+library(Luciernaga)
+library(Coereba)
+library(flowGate)
+library(dplyr)
+library(stringr)
+library(purrr)
+```
+
+```{r}
+TheseScripts <- list.files("R", pattern=".R", full.names=TRUE)
+walk(.x=TheseScripts, .f=source)
+```
+
+```{r}
+Folder <- "Ctrl_Antibody"
+Subset <- "CD8"
+
+StorageLocation <- file.path("outputs", Folder, Subset)
+
+PaCMAPPath <- file.path(StorageLocation, "PaCMAP")
+
+OutpathLocation <- file.path(PaCMAPPath, "Islands")
+if(!dir.exists(OutpathLocation)){dir.create(OutpathLocation)}
+```
+
+```{r}
+CSVs <- list.files(OutpathLocation, pattern=".csv", full.names=TRUE)
+Names <- 1:length(CSVs)
+Names <- paste0(Subset, "_", Names)
+#devtools::load_all("/home/david/Documents/Coereba")
+```
+
+```{r}
+StatsWrapper <- function(x, y){
+  Dataset <- read.csv(x, check.names=FALSE)
+  Dataset <- Dataset |> select("bid", "ptype", "infant_sex", where(is.numeric))
+  Dataset$bid <- factor(Dataset$bid, levels=c("HU", "HEU-lo", "HEU-hi"))
+  Dataset$infant_sex <- factor(Dataset$infant_sex, levels=c("Female", "Male"))
+
+  Dataset <- Dataset |>
+  select(where(\(x) !is.numeric(x) || any(x != 0, na.rm = TRUE)))
+
+  var <- Dataset |> select(where(is.numeric)) |> colnames()
+
+  Ptype <- map(
+    .x = var,   # character vector of the names to loop over
+    .f = \(v) Utility_Stats(
+      data = Dataset,
+      var = v,
+      myfactor = "ptype",
+      specifiedNormality = "nonparametric"
+    )
+  )
+
+  Ptype <- Ptype |> bind_rows() |> mutate(Island=y, Comparison="ptype")
+
+  Sex <- map(
+    .x = var,   # character vector of the names to loop over
+    .f = \(v) Utility_Stats(
+      data = Dataset,
+      var = v,
+      myfactor = "infant_sex",
+      specifiedNormality = "nonparametric"
+    )
+  )
+
+  Sex <- Sex |> bind_rows() |> mutate(Island=y, Comparison="infant_sex")
+
+  Stats <- bind_rows(Ptype, Sex)
+  return(Stats)
+}
+```
+
+```{r}
+Dataset <- map2(.f=StatsWrapper, .x=CSVs, .y=Names) |> bind_rows()
+
+Dataset$pvalue <- as.numeric(Dataset$pvalue)
+
+Dataset <- Dataset |> arrange(pvalue)
+
+StatsPath <- file.path(StorageLocation, "Stats")
+
+if(!dir.exists(StatsPath)){dir.create(StatsPath)}
+
+SaveName <- paste(Subset, Folder, "Stats.csv", sep="_")
+StoreAwayHere <- file.path(StatsPath, SaveName)
+write.csv(Dataset, StoreAwayHere, row.names=FALSE)
+```
+
+```{r}
+print("Goodbye")
+```
