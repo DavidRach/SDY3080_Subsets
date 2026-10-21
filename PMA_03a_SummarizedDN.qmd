@@ -255,6 +255,17 @@ saveHDF5SummarizedExperiment(CleanBioconductor,
 ```
 
 ```{r}
+#| eval: TRUE
+
+library(HDF5Array)
+
+H5Name <- paste0(Subset, "_SummarizedExperiment_h5")
+StoreHere <- file.path(OutputLocation, H5Name)
+
+CleanBioconductor <- loadHDF5SummarizedExperiment(dir = StoreHere)
+```
+
+```{r}
 #| label: MarkerExpressions
 #?Coereba_MarkerExpressions
 Data <- Coereba_MarkerExpressions(x=CleanBioconductor, returnType="All", theassay="ratios")
@@ -272,10 +283,17 @@ write.csv(Data, StoreHere, row.names=FALSE)
 shape_ptype <- c("HU" = 22, "HEU-lo" = 21, "HEU-hi" = 21)
 fill_ptype <- c("HU" = "white", "HEU-lo" = "darkgray", "HEU-hi" = "black")
 
+MarkerOrder <- c("CD7", "CD3", "CD4", "CD8", "CD26", "CCR6", "CD161", "NKG2D", "CD56", "CD16",
+                "CD45RA", "CD62L", "CD27", "CCR7", "CD127", "CXCR3", "CCR4", "CD25", "PD1", "CD38",  
+                "VD2", "Va7.2", "Va24Ja18", "Lineage-",  "Viability", "CD69", "TNFa", "IFNg", "CD107a")
+
+DropThese <- c("VD2", "Va7.2", "Va24Ja18", "Lineage-",  "Viability")
+
 ThisFilesName <- paste0(Subset, "_PMA_All")
 
-ThePlot <- Utility_MarkerPlots(data=Data, myfactor="ptype", shape_palette = shape_ptype, fill_palette = fill_ptype, panel=ThePanel, XAxisLevels=NULL, cex=0.5, size =1, corral.width = 0.5, MarkerName="Marker", savePlot = TRUE, filename = ThisFilesName, style="separate", outpath = OutputLocation, width=18)
+ThePlot <- Utility_MarkerPlots(data=Data, myfactor="ptype", shape_palette = shape_ptype, fill_palette = fill_ptype, panel=ThePanel, XAxisLevels=MarkerOrder, cex=0.5, size =1, corral.width = 0.5, MarkerName="Marker", savePlot = TRUE, filename = ThisFilesName, style="separate", outpath = OutputLocation, width=18, DropThese=DropThese)
 ```
+
 
 ```{r}
 se <- CleanBioconductor

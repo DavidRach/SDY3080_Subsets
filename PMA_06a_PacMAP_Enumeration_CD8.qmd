@@ -67,7 +67,8 @@ ggcyto(IslandsGS[1], subset="root",
 
 ```{r}
 
-RapidFire <- function(IslandsSet, x, OutputLocation, Subset){
+RapidFire <- function(IslandsSet, x, OutputLocation, Subset,
+ XAxisLevels=NULL, DropThese=NULL){
 
 Index <- x
 
@@ -123,7 +124,10 @@ Data$ptype <- factor(Data$ptype, levels=c("HU", "HEU-lo", "HEU-hi"))
 
 ThisFilesName <- paste0(Subset, "_", Index, "_PMA")
 
-ThePlot <- Utility_MarkerPlots(data=Data, myfactor="ptype", shape_palette = shape_ptype, fill_palette = fill_ptype, panel=ThePanel, XAxisLevels=NULL, cex=0.5, size =1, corral.width = 0.5, MarkerName="Marker", savePlot = TRUE, filename = ThisFilesName, style="separate", outpath = OutputLocation, width=18)
+XAxisLevels <- XAxisLevels[!XAxisLevels %in% DropThese]
+Data <- Data |> select(!any_of(DropThese))
+
+ThePlot <- Utility_MarkerPlots(data=Data, myfactor="ptype", shape_palette = shape_ptype, fill_palette = fill_ptype, panel=ThePanel, XAxisLevels=XAxisLevels, cex=0.5, size =1, corral.width = 0.5, MarkerName="Marker", savePlot = TRUE, filename = ThisFilesName, style="separate", outpath = OutputLocation, width=18)
 
 }
 ```
@@ -133,10 +137,14 @@ Index <- 1:length(IslandsSet)
 
 # x <- Index[1]
 
-# devtools::document("/home/david/Documents/Coereba")
-# devtools::load_all("/home/david/Documents/Coereba")
+MarkerOrder <- c("CD7", "CD3", "CD4", "CD8", "CD26", "CCR6", "CD161", "NKG2D", "CD56", "CD16",
+                "CD45RA", "CD62L", "CD27", "CCR7", "CD127", "CXCR3", "CCR4", "CD25", "PD1", "CD38",  
+                "VD2", "Va7.2", "Va24Ja18", "Lineage-",  "Viability", "CD69", "TNFa", "IFNg", "CD107a")
 
-walk(.f=RapidFire, .x=Index, IslandsSet=IslandsSet, OutputLocation=OutpathLocation, Subset=Subset)
+DropThese <- c(  "VD2", "Va7.2", "Va24Ja18", "Lineage-",  "Viability")
+
+walk(.f=RapidFire, .x=Index, IslandsSet=IslandsSet, OutputLocation=OutpathLocation, Subset=Subset,
+ XAxisLevels=MarkerOrder, DropThese=DropThese)
 ```
 
 # Stop
